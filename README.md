@@ -89,61 +89,61 @@ Two separate, fully working implementations are included in this repository.
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  LAYER 1 — ORCHESTRATION : Parent Pipeline                                   │
 │                                                                              │
-│   ┌─────────────────────────┐        ┌──────────────────────────────────┐   │
-│   │  LOOKUP                 │        │  FOREACH                         │   │
-│   │  LKUP_SQLTABLE_         │──────▶ │  ForEachSQLTable                 │   │
-│   │  WATRMRK_DW             │        │  @activity('LKUP_SQLTABLE_       │   │
-│   │                         │        │  WATRMRK_DW').output.value       │   │
-│   │  SELECT TableSchema,    │        │  (Sequential = OFF → parallel)   │   │
-│   │  TableName,             │        └────────────────┬─────────────────┘   │
-│   │  WatermarkColumn,       │                         │ @item() per table   │
-│   │  LastLoadValue          │                         ▼                     │
-│   │  FROM ADF_Watermark_    │        ┌──────────────────────────────────┐   │
-│   │  Table                  │        │  EXECUTE PIPELINE                │   │
-│   │  First row only: OFF    │        │  EXEC_SQL_INCREMENTAL_PIPELINE   │   │
-│   └─────────────────────────┘        │  → calls Layer 2                 │   │
-│                                      └──────────────────────────────────┘   │
+│   ┌─────────────────────────┐        ┌──────────────────────────────────┐    │
+│   │  LOOKUP                 │        │  FOREACH                         │    │
+│   │  LKUP_SQLTABLE_         │──────▶ │  ForEachSQLTable                 │    │
+│   │  WATRMRK_DW             │        │  @activity('LKUP_SQLTABLE_       │    │
+│   │                         │        │  WATRMRK_DW').output.value       │    │
+│   │  SELECT TableSchema,    │        │  (Sequential = OFF → parallel)   │    │
+│   │  TableName,             │        └────────────────┬─────────────────┘    │
+│   │  WatermarkColumn,       │                         │ @item() per table    │
+│   │  LastLoadValue          │                         ▼                      │
+│   │  FROM ADF_Watermark_    │        ┌──────────────────────────────────┐    │
+│   │  Table                  │        │  EXECUTE PIPELINE                │    │
+│   │  First row only: OFF    │        │  EXEC_SQL_INCREMENTAL_PIPELINE   │    │
+│   └─────────────────────────┘        │  → calls Layer 2                 │    │
+│                                      └──────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  LAYER 2 — LOAD : Child Pipeline Incremental                                 │
-│                                                                              │
-│  ┌──────────────┐    ┌─────────────────────┐    ┌──────────────────────┐    │
-│  │  LOOKUP      │    │  IF CONDITION        │    │  COPY DATA           │    │
-│  │  LKUP_MAX_   │──▶ │  IF_NEW_RECORD_      │──▶ │  COPYSQL_FULL_       │    │
-│  │  VALUE       │    │  EXISTS              │    │  INCTLOAD_TABLES     │    │
-│  │              │    │                      │    │                      │    │
-│  │  SELECT MAX  │    │  TRUE if:            │    │  Source: SQL DB      │    │
-│  │  (Watermark  │    │  LastLoadValue=NULL  │    │  SELECT * FROM table │    │
-│  │  Column)     │    │  OR MAX > LastLoad   │    │  WHERE col > lastVal │    │
-│  │  AS MaxValue │    │                      │    │  (NULL = full load)  │    │
-│  │              │    │  FALSE → skip table  │    │                      │    │
-│  └──────────────┘    └─────────────────────┘    │  Sink: ADLS Gen2     │    │
-│                                                  │  Format: Parquet     │    │
-│                                                  │  Compress: Snappy    │    │
-│                                                  └──────────┬───────────┘    │
-│                                                             │ on success     │
-│                                                             ▼                │
-│                                                  ┌──────────────────────┐    │
-│                                                  │  EXECUTE PIPELINE    │    │
-│                                                  │  EXEC_UPDATE_        │    │
-│                                                  │  WATERMARK           │    │
-│                                                  │  → calls Layer 3     │    │
-│                                                  └──────────────────────┘    │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  LAYER 2 — LOAD : Child Pipeline Incremental                                │
+│                                                                             │
+│  ┌──────────────┐    ┌─────────────────────┐   ┌──────────────────────┐     │
+│  │  LOOKUP      │    │  IF CONDITION       │   │  COPY DATA           │     │
+│  │  LKUP_MAX_   │──▶ │  IF_NEW_RECORD_     │──▶│  COPYSQL_FULL_       │     │
+│  │  VALUE       │    │  EXISTS             │   │  INCTLOAD_TABLES     │     │
+│  │              │    │                     │   │                      │     │
+│  │  SELECT MAX  │    │  TRUE if:           │   │  Source: SQL DB      │     │
+│  │  (Watermark  │    │  LastLoadValue=NULL │   │  SELECT * FROM table │     │
+│  │  Column)     │    │  OR MAX > LastLoad  │   │  WHERE col > lastVal │     │
+│  │  AS MaxValue │    │                     │   │  (NULL = full load)  │     │
+│  │              │    │  FALSE → skip table │   │                      │     │
+│  └──────────────┘    └─────────────────────┘   │  Sink: ADLS Gen2     │     │
+│                                                │  Format: Parquet     │     │
+│                                                │  Compress: Snappy    │     │
+│                                                └──────────┬───────────┘     │
+│                                                           │ on success      │
+│                                                           ▼                 │
+│                                                  ┌──────────────────────┐   │
+│                                                  │  EXECUTE PIPELINE    │   │
+│                                                  │  EXEC_UPDATE_        │   │
+│                                                  │  WATERMARK           │   │
+│                                                  │  → calls Layer 3     │   │
+│                                                  └──────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  LAYER 3 — CONTROL : Child Pipeline StoreProcedure                           │
-│                                                                              │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  LAYER 3 — CONTROL : Child Pipeline StoreProcedure                          │
+│                                                                             │
 │   ┌──────────────────────────────────────────────────────────────────────┐  │
 │   │  STORED PROCEDURE ACTIVITY                                           │  │
-│   │  SP-UPDT_WTRMRK → [dbo].[UpdateWatermark]                           │  │
+│   │  SP-UPDT_WTRMRK → [dbo].[UpdateWatermark]                            │  │
 │   │                                                                      │  │
 │   │  Dynamically computes MAX(WatermarkColumn) from source table         │  │
 │   │  Updates ADF_Watermark_Table SET LastLoadValue = MAX value           │  │
 │   │  WHERE TableName = @TableName AND TableSchema = @TableSchema         │  │
 │   └──────────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
