@@ -1,0 +1,32 @@
+{
+	"name": "DS_LKUP_MAX_VALUE_VM",
+	"properties": {
+		"description": "Lookup dataset to fetch max watermark value from SQL Server on Azure VM (vm-sqlserver-dev) via SHIR",
+		"linkedServiceName": {
+			"referenceName": "LS_VM_SQL_DW",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"schemaname": {
+				"type": "string"
+			},
+			"tablename": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"type": "SqlServerTable",
+		"schema": [],
+		"typeProperties": {
+			"schema": {
+				"value": "@dataset().schemaname",
+				"type": "Expression"
+			},
+			"table": {
+				"value": "@dataset().tablename",
+				"type": "Expression"
+			}
+		}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

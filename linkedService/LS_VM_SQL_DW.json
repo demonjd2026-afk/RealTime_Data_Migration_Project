@@ -1,0 +1,22 @@
+{
+	"name": "LS_VM_SQL_DW",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"description": "Linked service to connect to SQL Server on Azure VM (vm-sqlserver-dev) hosted at private IP 10.0.0.4.",
+		"annotations": [],
+		"type": "SqlServer",
+		"typeProperties": {
+			"server": "10.0.0.4,1433",
+			"database": "DataWareHouse",
+			"encrypt": "optional",
+			"trustServerCertificate": false,
+			"authenticationType": "SQL",
+			"userName": "sqladmin",
+			"encryptedCredential": "eyJDcmVkZW50aWFsSWQiOiIwZDc3OWEyMC1kZTdiLTRhMmUtYmRlMi1lNWM3Y2YyMjBmMDEiLCJWZXJzaW9uIjoiMi4wIiwiQ2xhc3NUeXBlIjoiTWljcm9zb2Z0LkRhdGFQcm94eS5Db3JlLkludGVyU2VydmljZURhdGFDb250cmFjdC5DcmVkZW50aWFsU1UwNkNZMTQifQ=="
+		},
+		"connectVia": {
+			"referenceName": "SHIR-VM-SQLServer",
+			"type": "IntegrationRuntimeReference"
+		}
+	}
+}

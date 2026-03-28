@@ -1,0 +1,196 @@
+{
+	"name": "Child Pipeline Incremental",
+	"properties": {
+		"description": "Receives one table at a time from the Parent Pipeline. \n\nChecks if new data exists using MAX watermark, copies new rows from Azure\nSQL to ADLS Gen2 as Parquet, then calls Child Pipeline StoreProcedure to update the watermark.",
+		"activities": [
+			{
+				"name": "LKUP_MAX_VALUE_VM",
+				"description": "Queries the source Azure VM SQL table to find the MAX value of the watermark column. \n\nResult is used by the IF Condition to decide whether new data exists.",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"sqlReaderQuery": {
+							"value": "SELECT MAX(@{pipeline().parameters.WatermarkColumn}) AS MaxValue\nFROM @{pipeline().parameters.TableSchema}.@{pipeline().parameters.TableName}",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_LKUP_MAX_VALUE_VM",
+						"type": "DatasetReference",
+						"parameters": {
+							"schemaname": {
+								"value": "@pipeline().parameters.TableSchema",
+								"type": "Expression"
+							},
+							"tablename": {
+								"value": "@pipeline().parameters.TableName",
+								"type": "Expression"
+							}
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "IF_NEW_RECORD_EXISTS",
+				"description": "Checks if new data exists: TRUE if LastLoadValue is NULL (first run = full load) OR if MAX watermark in source > last loaded value\n(new rows exist). \n\nTRUE branch runs Copy + SP. \n\nFALSE branch does\nnothing.",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "LKUP_MAX_VALUE_VM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(\nequals(pipeline().parameters.LastLoadValue, null),\ngreater(\nint(activity('LKUP_MAX_VALUE_VM').output.firstRow.MaxValue),\nint(pipeline().parameters.LastLoadValue)))",
+						"type": "Expression"
+					},
+					"ifTrueActivities": [
+						{
+							"name": "COPYSQL_FULL_INCTLOAD_TABLES",
+							"description": "Copies data from Azure SQL to ADLS Gen2 as Parquet. \nRuns a full SELECT * on first run (NULL watermark) or a filtered SELECT WHERE\ncolumn > lastValue on subsequent runs (incremental load).",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlServerSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT * FROM ',\npipeline().parameters.TableSchema,'.',pipeline().parameters.TableName,\nif(equals(pipeline().parameters.LastLoadValue, null),'',\nconcat(' WHERE ',pipeline().parameters.WatermarkColumn,\n' > ','''',pipeline().parameters.LastLoadValue,'''')\n))",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "ParquetSink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									},
+									"formatSettings": {
+										"type": "ParquetWriteSettings"
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_LKUP_MAX_VALUE_VM",
+									"type": "DatasetReference",
+									"parameters": {
+										"schemaname": {
+											"value": "@pipeline().parameters.TableSchema",
+											"type": "Expression"
+										},
+										"tablename": {
+											"value": "@pipeline().parameters.TableName",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_SqlTable_Parquet1",
+									"type": "DatasetReference",
+									"parameters": {
+										"Table_Name": {
+											"value": "@pipeline().parameters.TableName",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "EXEC_UPDATE_WATERMARK",
+							"description": "Calls Child Pipeline StoreProcedure to update dbo.ADF_Watermark_Table with the latest MAX value after a successful copy. \n\nThis ensures the next pipeline run only picks up rows added after this point.",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "COPYSQL_FULL_INCTLOAD_TABLES",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Child Pipeline StoreProcedure",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"TableSchema": {
+										"value": "@pipeline().parameters.TableSchema",
+										"type": "Expression"
+									},
+									"TableName": {
+										"value": "@pipeline().parameters.TableName",
+										"type": "Expression"
+									},
+									"WatermarkColumn": {
+										"value": "@pipeline().parameters.WatermarkColumn",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"TableSchema": {
+				"type": "string"
+			},
+			"TableName": {
+				"type": "string"
+			},
+			"WatermarkColumn": {
+				"type": "string"
+			},
+			"LastLoadValue": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-03-27T10:07:51Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

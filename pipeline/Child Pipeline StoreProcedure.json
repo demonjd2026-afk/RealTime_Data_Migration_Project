@@ -1,0 +1,66 @@
+{
+	"name": "Child Pipeline StoreProcedure",
+	"properties": {
+		"description": "Updates dbo.ADF_Watermark_Table with the latest processed value\nafter each successful copy. Called by Child Pipeline Incremental.",
+		"activities": [
+			{
+				"name": "SP-UPDT_WTRMRK",
+				"description": "Executes dbo.UpdateWatermark on the Azure VM DataWareHouse database. \n\nUpdates dbo.ADF_Watermark_Table so the next pipeline run knows where to resume from for this specific table.",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[dbo].[UpdateWatermark]",
+					"storedProcedureParameters": {
+						"TableName": {
+							"value": {
+								"value": "@pipeline().parameters.TableName",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"TableSchema": {
+							"value": {
+								"value": "@pipeline().parameters.TableSchema",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"WatermarkColumn": {
+							"value": {
+								"value": "@pipeline().parameters.WatermarkColumn",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_VM_SQL_DW",
+					"type": "LinkedServiceReference"
+				}
+			}
+		],
+		"parameters": {
+			"TableSchema": {
+				"type": "string"
+			},
+			"TableName": {
+				"type": "string"
+			},
+			"WatermarkColumn": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-03-27T10:07:51Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

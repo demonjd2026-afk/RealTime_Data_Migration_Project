@@ -1,0 +1,100 @@
+{
+	"name": "Parent Pipeline Orchestration",
+	"properties": {
+		"description": "Master/entry-point pipeline. \n\nReads all rows from dbo.ADF_Watermark_Table and loops over each table, calling Child Pipeline Incremental once per table. \n\nThis is the only pipeline you\ntrigger manually or via a schedule.",
+		"activities": [
+			{
+				"name": "LKUP_SQLTABLE_WATRMRK_DW",
+				"description": "Reads ALL rows from dbo.ADF_Watermark_Table in Azure VM SQL. Each row contains the table name, schema, watermark column, and last loaded value. This output array feeds the ForEach loop.",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"sqlReaderQuery": "SELECT TableSchema, TableName, WatermarkColumn, LastLoadValue\nFROM dbo.ADF_Watermark_Table;",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_LKUP_MAX_VALUE_VM",
+						"type": "DatasetReference",
+						"parameters": {
+							"schemaname": "NA",
+							"tablename": "NA"
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEachSQLTable",
+				"description": "Loops over every row returned by LKUP_SQLTABLE_WATRMRK_DW. Each iteration represents one table and calls Child Pipeline Incremental with that table's schema, name, watermark column and last loaded value.",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "LKUP_SQLTABLE_WATRMRK_DW",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('LKUP_SQLTABLE_WATRMRK_DW').output.value",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"activities": [
+						{
+							"name": "EXEC_SQL_INCREMENTAL_PIPELINE",
+							"description": "Calls Child Pipeline Incremental once for each table row from the ForEach loop. Passes the table's schema, name, watermark column and last loaded value as parameters so the child pipeline knows exactly which table to process.",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Child Pipeline Incremental",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"TableSchema": {
+										"value": "@item().TableSchema",
+										"type": "Expression"
+									},
+									"TableName": {
+										"value": "@item().TableName",
+										"type": "Expression"
+									},
+									"WatermarkColumn": {
+										"value": "@item().WatermarkColumn",
+										"type": "Expression"
+									},
+									"LastLoadValue": {
+										"value": "@item().LastLoadValue",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2026-03-27T10:07:52Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

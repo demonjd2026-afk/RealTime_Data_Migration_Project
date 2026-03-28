@@ -1,0 +1,7 @@
+{
+	"name": "SHIR-VM-SQLServer",
+	"properties": {
+		"type": "SelfHosted",
+		"description": "Self-Hosted Integration Runtime installed on Azure VM (vm-sqlserver-dev) to enable ADF connectivity to on-VM SQL Server"
+	}
+}
